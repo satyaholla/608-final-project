@@ -4,6 +4,7 @@
 #include <WiFiClient.h>
 #include <ArduinoJson.h>
 
+const char USERNAME[] = "sgholla";
 
 TFT_eSPI tft = TFT_eSPI();
 
@@ -40,11 +41,8 @@ WiFiClient client2; //global WiFiClient Secure object
 //const char PASSWORD[] = "";
 //
 //
-const char NETWORK[] = "EECS_Labs";
+const char NETWORK[] = "MIT";
 const char PASSWORD[] = "";
-//
-//const char NETWORK[] = "608_24G";
-//const char PASSWORD[] = "608g2020";
 
 /* Having network issues since there are 50 MIT and MIT_GUEST networks?. Do the following:
     When the access points are printed out at the start, find a particularly strong one that you're targeting.
@@ -171,6 +169,9 @@ void setup() {
 
 //main body of code
 void loop() {
+
+
+
   // button_state = digitalRead(BUTTON);
   // if (!button_state && button_state != old_button_state) {
   //   int offset = sprintf(json_body, "%s", PREFIX);
