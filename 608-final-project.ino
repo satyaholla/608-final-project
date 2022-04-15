@@ -7,6 +7,9 @@
 const char USERNAME[] = "sgholla";
 
 TFT_eSPI tft = TFT_eSPI();
+long long prime = -1;
+long long generator = -1;
+bool printed = false;
 
 const uint16_t RESPONSE_TIMEOUT = 6000;
 const uint16_t IN_BUFFER_SIZE = 3500; //size of buffer to hold HTTP request
@@ -100,7 +103,7 @@ int wifi_object_builder(char* object_string, uint32_t os_len, uint8_t channel, i
   }
 }
 
-char*  SERVER = "googleapis.com";  // Server URL
+char* SERVER = "googleapis.com";  // Server URL
 
 uint32_t timer;
 
@@ -169,8 +172,16 @@ void setup() {
 
 //main body of code
 void loop() {
-
-
+  button_state = digitalRead(BUTTON);
+  if (prime == -1 && !button_state && !printed) {
+    key_exchange("ezahid");
+    printed = true;
+  }
+  else if (!printed && prime != -1) {
+    Serial.println(prime);
+    Serial.println(generator);
+    printed = true;
+  }
 
   // button_state = digitalRead(BUTTON);
   // if (!button_state && button_state != old_button_state) {
@@ -240,4 +251,14 @@ void loop() {
   //   }
   // }
   // old_button_state = button_state;
+}
+
+
+void key_exchange(const char* user) {
+  request[0] = '\0';
+  sprintf(request, "GET http://608dev-2.net/sandbox/sc/sgholla/final-project/key_exchange.py?user=%s&this_user=%s HTTP/1.1\r\n", user, USERNAME);
+  strcat(request, "Host: 608dev-2.net\r\n"); //add more to the end
+  strcat(request, "\r\n");
+  do_http_request("608dev-2.net", request, response, OUT_BUFFER_SIZE, RESPONSE_TIMEOUT, true);
+  Serial.println(response);
 }
