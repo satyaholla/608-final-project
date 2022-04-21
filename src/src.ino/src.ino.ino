@@ -5,6 +5,7 @@
 #include <TFT_eSPI.h> // Graphics and font library for ST7735 driver chip
 #include <SPI.h>
 #include <WiFiClientSecure.h>
+#include <ArduinoJson.h>
 TFT_eSPI tft = TFT_eSPI();  // Invoke library, pins defined in User_Setup.h
 
 const char* CA_CERT = \
@@ -35,6 +36,12 @@ const char SUFFIX[] = "\"}}"; //suffix to POST request
 const int AUDIO_IN = 1; //pin where microphone is connected
 const char API_KEY[] = "AIzaSyAQ9SzqkHhV-Gjv-71LohsypXUH447GWX8"; //don't change this
 
+const char PREFIX2[] = "{\"wifiAccessPoints\": ["; //beginning of json body
+const char SUFFIX2[] = "]}"; //suffix to POST request
+
+uint8_t channel = 1; //network channel on 2.4 GHz
+byte bssid[] = {0x04, 0x95, 0xE6, 0xAE, 0xDB, 0x41}; //6 byte MAC address of AP you're targeting.
+
 char network[] = "MIT";
 char password[] = "";
 
@@ -48,25 +55,33 @@ char speech_data[ENC_LEN + 200] = {0}; //global used for collecting speech data
 const char* NETWORK     = "MIT";     // your network SSID (name of wifi network)
 const char* PASSWORD = ""; // your network password
 const char*  SERVER = "speech.google.com";  // Server URL
+char*  SERVER2 = "googleapis.com";  // Server URL
 
 const int RESPONSE_TIMEOUT = 6000; //ms to wait for response from host
 const int POSTING_PERIOD = 6000;
 const uint8_t LOOP_PERIOD = 10; //milliseconds
-const uint16_t IN_BUFFER_SIZE = 1000; //size of buffer to hold HTTP request
+const uint16_t IN_BUFFER_SIZE = 3500; //size of buffer to hold HTTP request
 const uint16_t OUT_BUFFER_SIZE = 1000; //size of buffer to hold HTTP response
-char request_buffer[IN_BUFFER_SIZE]; //char array buffer to hold HTTP request
-char response_buffer[OUT_BUFFER_SIZE]; //char array buffer to hold HTTP response
+const uint16_t JSON_BODY_SIZE = 3000;
+char request[IN_BUFFER_SIZE];
+char request2[IN_BUFFER_SIZE];
 char response[OUT_BUFFER_SIZE]; //char array buffer to hold HTTP request
+char json_body[JSON_BODY_SIZE];
+char request_buffer[IN_BUFFER_SIZE]; //char array buffer to hold HTTP request
+char request_buffer2[IN_BUFFER_SIZE]; //char array buffer to hold HTTP request
+char response_buffer[OUT_BUFFER_SIZE]; //char array buffer to hold HTTP response
 
 uint32_t primary_timer = 0;
 uint32_t posting_timer = 0;
 
 const char USER[] = "kiersten";
+const char POST_URL[] = "POST https://608dev-2.net/sandbox/sc/kmitzel/final/finalproject.py HTTP/1.1\r\n"; //CHANGE THIS TO YOUR TEAM'S URL
 
 const uint8_t BUTTON1 = 45; //pin connected to button
 const uint8_t BUTTON2 = 39; //pin connected to button
 const uint8_t BUTTON3 = 38;
 const uint8_t BUTTON4 = 34;
+const int MAX_APS = 5;
 
 uint8_t button_state; //used for containing button state and detecting edges
 int old_button_state; //used for detecting button edges
@@ -76,6 +91,7 @@ uint8_t old_val;
 uint32_t timer;
 
 WiFiClientSecure client; //global WiFiClient Secure object
+WiFiClient client2; //global WiFiClient Secure object
 
 void setup() {
   Serial.begin(115200); //begin serial
@@ -198,12 +214,12 @@ void loop() {
       }
       //Serial.println(response); //comment this out if needed for debugging
       char* trans_id = strstr(response, "transcript");
+      char transcript[100] = {0};
       if (trans_id != NULL) {
         char* foll_coll = strstr(trans_id, ":");
         char* starto = foll_coll + 2; //starting index
         char* endo = strstr(starto + 1, "\""); //ending index
         int transcript_len = endo - starto + 1;
-        char transcript[100] = {0};
         strncat(transcript, starto, transcript_len);
         Serial.println("Translated Text: ");
         Serial.println(transcript);
@@ -211,6 +227,59 @@ void loop() {
       Serial.println("-----------");
       client.stop();
       Serial.println("done");
+      int n = WiFi.scanNetworks();
+      int offset = sprintf(json_body, "%s", PREFIX2);
+      int max_aps = max(min(MAX_APS, n), 1);
+      for (int i = 0; i < max_aps; ++i) { //for each valid access point
+        uint8_t* mac = WiFi.BSSID(i); //get the MAC Address
+        offset += wifi_object_builder(json_body + offset, JSON_BODY_SIZE-offset, WiFi.channel(i), WiFi.RSSI(i), WiFi.BSSID(i)); //generate the query
+        if(i!=max_aps-1){
+          offset +=sprintf(json_body+offset,",");//add comma between entries except trailing.
+        }
+      }
+      sprintf(json_body + offset, "%s", SUFFIX2);
+      Serial.println(json_body);
+      int len2 = strlen(json_body);
+      // Make a HTTP request:
+      Serial.println("SENDING REQUEST");
+      request2[0] = '\0'; //set 0th byte to null
+      offset = 0; //reset offset variable for sprintf-ing
+      offset += sprintf(request2 + offset, "POST https://www.googleapis.com/geolocation/v1/geolocate?key=%s  HTTP/1.1\r\n", API_KEY);
+      offset += sprintf(request2 + offset, "Host: googleapis.com\r\n");
+      offset += sprintf(request2 + offset, "Content-Type: application/json\r\n");
+      offset += sprintf(request2 + offset, "cache-control: no-cache\r\n");
+      offset += sprintf(request2 + offset, "Content-Length: %d\r\n\r\n", len2);
+      offset += sprintf(request2 + offset, "%s\r\n", json_body);
+      do_https_request(SERVER2, request2, response, OUT_BUFFER_SIZE, RESPONSE_TIMEOUT, false);
+      //For Part Two of Lab04B, you should start working here. Create a DynamicJsonDoc of a reasonable size (few hundred bytes at least...)
+      DynamicJsonDocument doc(300);
+      char* jsonStart = strchr(response, '{');
+      *(strrchr(response, '}') + 1) = '\0';
+      deserializeJson(doc, jsonStart);
+      double lat = doc["location"]["lat"];
+      double log = doc["location"]["lng"];
+
+      tft.fillScreen(TFT_BLACK);
+      tft.setCursor(0, 0);
+      tft.println("Current Location:");
+      tft.print("Lat: ");
+      tft.println(lat);
+      tft.print("Lon: ");
+      tft.println(log);
+
+      char body[2000]; //for body
+      sprintf(body, "lat=%f&lon=%f&message=%s&user=%s", lat, log, transcript, USER); //generate body, posting temp, humidity to server
+      int body_len = strlen(body); //calculate body length (for header reporting)
+      sprintf(request_buffer2, POST_URL);
+      strcat(request_buffer2, "Host: 608dev-2.net\r\n");
+      strcat(request_buffer2, "Content-Type: application/x-www-form-urlencoded\r\n");
+      sprintf(request_buffer2 + strlen(request_buffer2), "Content-Length: %d\r\n", body_len); //append string formatted to end of request buffer
+      strcat(request_buffer2, "\r\n"); //new line from header to body
+      strcat(request_buffer2, body); //body
+      strcat(request_buffer2, "\r\n"); //new line
+      Serial.println(request_buffer2);
+      do_http_request("608dev-2.net", request_buffer2, response_buffer, OUT_BUFFER_SIZE, RESPONSE_TIMEOUT, true);
+
     }
   }
   old_button_state = button_state;
@@ -443,4 +512,50 @@ int8_t mulaw_encode(int16_t sample) {
         ;
    lsb = (sample >> (position - 4)) & 0x0f;
    return (~(sign | ((position - 5) << 4) | lsb));
+}
+
+int wifi_object_builder(char* object_string, uint32_t os_len, uint8_t channel, int signal_strength, uint8_t* mac_address) {
+  char string_copy[100];
+  sprintf(string_copy, "{\"macAddress\": \"%02x:%02x:%02x:%02x:%02x:%02x\", \"signalStrength\": %d, \"age\": 0, \"channel\": %d}", mac_address[0], mac_address[1], mac_address[2], mac_address[3], mac_address[4], mac_address[5], signal_strength, channel);
+  uint8_t length = strlen(string_copy); 
+  if (length > os_len) {
+    return 0;
+  }
+  else {
+    strcpy(object_string, string_copy); 
+    return length;
+  }
+}
+
+void do_https_request(char* host, char* request, char* response, uint16_t response_size, uint16_t response_timeout, uint8_t serial) {
+  client.setHandshakeTimeout(30);
+  client.setCACert(CA_CERT); //set cert for https
+  if (client.connect(host,443,4000)) { //try to connect to host on port 443
+    if (serial) Serial.print(request);//Can do one-line if statements in C without curly braces
+    client.print(request);
+    response[0] = '\0';
+    //memset(response, 0, response_size); //Null out (0 is the value of the null terminator '\0') entire buffer
+    uint32_t count = millis();
+    while (client.connected()) { //while we remain connected read out data coming back
+      client.readBytesUntil('\n', response, response_size);
+      if (serial) Serial.println(response);
+      if (strcmp(response, "\r") == 0) { //found a blank line!
+        break;
+      }
+      memset(response, 0, response_size);
+      if (millis() - count > response_timeout) break;
+    }
+    memset(response, 0, response_size);
+    count = millis();
+    while (client.available()) { //read out remaining text (body of response)
+      char_append(response, client.read(), OUT_BUFFER_SIZE);
+    }
+    if (serial) Serial.println(response);
+    client.stop();
+    if (serial) Serial.println("-----------");
+  } else {
+    if (serial) Serial.println("connection failed :/");
+    if (serial) Serial.println("wait 0.5 sec...");
+    client.stop();
+  }
 }
