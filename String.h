@@ -2,6 +2,7 @@
 #include <iostream>
 #include <stdexcept>
 
+// to fix: make count const somehow, fix naming of length
 class String {
     protected:
         int length;
@@ -9,7 +10,7 @@ class String {
         char* body;
 
     public:
-        int length() { return this->length; }
+        int getLength() { return this->length; }
         int capacity() { return this->bodySize; }
         char* rawCharArray() { return this->body; } // avoid using this function if possible
 
@@ -24,8 +25,20 @@ class String {
             this->body = newBody;
         }
         
-        String& substr(int pos = 0, int len = 1) {
-            
+        // String& substr(int pos = 0, int len = 1) {
+        //     // todo
+        // }
+
+        int count(String&& sub) {
+          int count = 0;
+          for (int i = 0; i < this->length - sub.length + 1; i++) {
+            bool matches = true;
+            for (int j = 0; j < sub.length && matches; j++) {
+              if (this->body[i + j] != sub[j]) matches = false;
+            }
+            count += matches;
+          }
+          return count;
         }
 
         String() {
@@ -91,7 +104,7 @@ class String {
         }
 
         char& operator[](int i) {
-            if (i >= this.length || i < 0) if (newSize < 1) throw std::range_error("index out of range");
+            if (i >= this->length || i < 0) throw std::range_error("index out of range");
             return this->body[i];
         }
 

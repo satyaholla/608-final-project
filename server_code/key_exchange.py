@@ -1,30 +1,54 @@
 import random
 from math import prod
+import sqlite3
+import datetime
+db = 'key_exchange.db'
 
-
-active_users = dict()
 SG_PRIME = 1048433
 SAFE_PRIME = SG_PRIME*2 + 1
 FACTORIZATION = {2: 1, SG_PRIME: 1}
 
 def request_handler(request):
+    initialize_tables()
     if request['method'] == 'GET':
         try:
             values = request['values']
-            user, this_user = values['user'], values['this_user']
+            other_user, this_user = values['user'], values['this_user']
+            get_type = values['get_type']
         except KeyError:
             return 'Key error'
 
-        if (this_user, user) in active_users:
-            p, g = active_users[(this_user, user)]
-            return f'{p},{g}'
-        else:
-            p, g = SAFE_PRIME, find_generator(SAFE_PRIME, FACTORIZATION)
-            active_users[(user, this_user)] = (p, g)
-            return f'{p},{g}'
+        if get_type == 'gen_exchange':
+            gen_res = get_gen_exchange(getter=this_user, poster=other_user)
+            if gen_res is not None:
+                p, g = gen_res
+                return f'{p},{g}'
+            else:
+                p, g = SAFE_PRIME, find_generator(SAFE_PRIME, FACTORIZATION)
+                post_gen_exchange(poster=this_user, getter=other_user, p=p, g=g)
+                return f'{p},{g}'
+
+        elif get_type == 'exp_exchange':
+            return f'{get_exp_exchange(getter=this_user, poster=other_user)}' # not yet has to be returned sometimes
+
+        else: return 'Not a valid type of get request'
 
     elif request['method'] == 'POST':
-        return 'Not implemented yet!'
+        try:
+            values = request['form']
+            post_type = values['post_type']
+        except KeyError:
+            return 'Key Error'
+        
+        if post_type == 'exp_exchange':
+            other_user, this_user = values['user'], values['this_user']
+            exponent = int(values['exponent'])
+            post_exp_exchange(poster=this_user, getter=other_user, exponent=exponent)
+            return f'Received {exponent}'
+
+        else:
+            return 'Not a valid type of post request'
+
     else:
         return 'Request method invalid.'
 
@@ -54,5 +78,63 @@ def find_power(g, x, p):
         res %= p
     return res
 
+def connect_db(func):
+    def inner(*args, **kwargs):
+    
+        func(*args, **kwargs)
+    
+        return 2
+    return inner
+
+def initialize_tables():
+    conn = sqlite3.connect(db)  # connect to that database (will create if it doesn't already exist)
+    c = conn.cursor()  # move cursor into database (allows us to execute commands)
+    c.execute('''CREATE TABLE IF NOT EXISTS gen_table (poster text, getter text, p int, g int, timing timestamp);''') # run a CREATE TABLE command
+    c.execute('''CREATE TABLE IF NOT EXISTS exp_table (poster text, getter text, exp int, timing timestamp);''') # run a CREATE TABLE command
+    c.execute('''DELETE FROM gen_table WHERE timing < ?;''', (datetime.datetime.now() - datetime.timedelta(minutes = 5),))
+    c.execute('''DELETE FROM exp_table WHERE timing < ?;''', (datetime.datetime.now() - datetime.timedelta(minutes = 5),))
+    conn.commit()
+    conn.close()
+
+def get_gen_exchange(poster, getter):
+    conn = sqlite3.connect(db)  # connect to that database (will create if it doesn't already exist)
+    c = conn.cursor()  # move cursor into database (allows us to execute commands)
+    gen_res = c.execute('''SELECT * FROM gen_table WHERE poster=? AND getter=? ORDER BY timing DESC;''', (poster, getter)).fetchone()
+    conn.commit()
+    conn.close()
+    return gen_res if gen_res is None else gen_res[2:4]
+
+def post_gen_exchange(poster, getter, p, g):
+    conn = sqlite3.connect(db)  # connect to that database (will create if it doesn't already exist)
+    c = conn.cursor()  # move cursor into database (allows us to execute commands)
+    c.execute('''INSERT into gen_table VALUES (?,?,?,?,?);''',(poster, getter, p, g, datetime.datetime.now()))
+    conn.commit()
+    conn.close()
+
+def get_exp_exchange(poster, getter):
+    conn = sqlite3.connect(db)  # connect to that database (will create if it doesn't already exist)
+    c = conn.cursor()  # move cursor into database (allows us to execute commands)
+    gen_res = c.execute('''SELECT * FROM exp_table WHERE poster=? AND getter=? ORDER BY timing DESC;''', (poster, getter)).fetchone()
+    conn.commit()
+    conn.close()
+    return 'Not yet' if gen_res is None else gen_res[2]
+
+def post_exp_exchange(poster, getter, exponent):
+    conn = sqlite3.connect(db)  # connect to that database (will create if it doesn't already exist)
+    c = conn.cursor()  # move cursor into database (allows us to execute commands)
+    c.execute('''INSERT into exp_table VALUES (?,?,?,?);''',(poster, getter, exponent, datetime.datetime.now()))
+    conn.commit()
+    conn.close()
+
+def request_handler_test(method, **kwargs):
+    request_dict = {'method': method}
+    if method == 'GET':
+        request_dict['values'] = kwargs
+    elif method == 'POST':
+        request_dict['form'] = kwargs
+    else: raise Exception()
+    return request_handler(request_dict)
+
+
 if __name__ == '__main__':
-    print(find_generator(SAFE_PRIME, FACTORIZATION))
+    print(request_handler_test('GET', user='satya', this_user='ethan', get_type='gen_exchange'))

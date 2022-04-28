@@ -3,13 +3,23 @@
 #include <WiFiClientSecure.h>
 #include <WiFiClient.h>
 #include <ArduinoJson.h>
+#include <String.h>
+#include <random>
 
 const char USERNAME[] = "sgholla";
 
+typedef unsigned long long bigNum;
+
 TFT_eSPI tft = TFT_eSPI();
-long long prime = -1;
-long long generator = -1;
+bigNum prime = -1;
+bigNum generator = -1;
+bigNum a = -1;
+bigNum g_b = -1;
 bool printed = false;
+int key_exchange_state = 0;
+uint32_t key_exchange_timer;
+uint32_t last_get_request;
+const uint16_t KEY_EXCHANGE_TIMEOUT = 10000;
 
 const uint16_t RESPONSE_TIMEOUT = 6000;
 const uint16_t IN_BUFFER_SIZE = 3500; //size of buffer to hold HTTP request
@@ -168,18 +178,24 @@ void setup() {
     ESP.restart(); // restart the ESP (proper way)
   }
   timer = millis();
+  key_exchange_timer = millis();
+  srand(millis());
 }
 
 //main body of code
 void loop() {
   button_state = digitalRead(BUTTON);
-  if (prime == -1 && !button_state && !printed) {
+  if (!button_state) {
     key_exchange("ezahid");
-    printed = true;
   }
   else if (!printed && prime != -1) {
+    delay(1000);
+    Serial.println("Final Values:\n");
     Serial.println(prime);
     Serial.println(generator);
+    Serial.println(a);
+    Serial.println(g_b);
+
     printed = true;
   }
 
@@ -255,10 +271,88 @@ void loop() {
 
 
 void key_exchange(const char* user) {
-  request[0] = '\0';
-  sprintf(request, "GET http://608dev-2.net/sandbox/sc/sgholla/final-project/key_exchange.py?user=%s&this_user=%s HTTP/1.1\r\n", user, USERNAME);
-  strcat(request, "Host: 608dev-2.net\r\n"); //add more to the end
-  strcat(request, "\r\n");
-  do_http_request("608dev-2.net", request, response, OUT_BUFFER_SIZE, RESPONSE_TIMEOUT, true);
-  Serial.println(response);
+  bigNum g_a;
+  switch (key_exchange_state) {
+    case 0:
+      request[0] = '\0';
+      sprintf(request, "GET http://608dev-2.net/sandbox/sc/sgholla/final-project/key_exchange.py?user=%s&this_user=%s&get_type=gen_exchange HTTP/1.1\r\n", user, USERNAME);
+      strcat(request, "Host: 608dev-2.net\r\n"); //add more to the end
+      strcat(request, "\r\n");
+      do_http_request("608dev-2.net", request, response, OUT_BUFFER_SIZE, RESPONSE_TIMEOUT, true);
+      {
+        char response_copy[OUT_BUFFER_SIZE];
+        strcpy(response_copy, response);
+        int comma_ind = -1;
+        while (response_copy[++comma_ind] != ',');
+        response_copy[comma_ind] = '\0';
+        prime = atoi(response_copy);
+        generator = atoi(response_copy + comma_ind + 1);
+      }
+
+      g_a = set_a(prime, generator);
+      Serial.println(g_a);
+
+      // POST THE G_A
+      {
+        char body[200];
+        sprintf(body, "post_type=%s&user=%s&this_user=%s&exponent=%llu", "exp_exchange", user, USERNAME, g_a); //generate body, posting temp, humidity to server
+        int body_len = strlen(body); //calculate body length (for header reporting)
+        sprintf(request, "POST http://608dev-2.net/sandbox/sc/sgholla/final-project/key_exchange.py HTTP/1.1\r\n");
+        strcat(request, "Host: 608dev-2.net\r\n");
+        strcat(request, "Content-Type: application/x-www-form-urlencoded\r\n");
+        sprintf(request + strlen(request), "Content-Length: %d\r\n", body_len); //append string formatted to end of request buffer
+        strcat(request, "\r\n"); //new line from header to body
+        strcat(request, body); //body
+        strcat(request, "\r\n"); //new line
+        do_http_request("608dev-2.net", request, response, OUT_BUFFER_SIZE, RESPONSE_TIMEOUT, true);
+      }
+
+      key_exchange_state = 1;
+      key_exchange_timer = millis();
+      break;
+    case 1:
+      if (millis() - key_exchange_timer < KEY_EXCHANGE_TIMEOUT) {
+        if (millis() - last_get_request > 100) {
+          request[0] = '\0';
+          sprintf(request, "GET http://608dev-2.net/sandbox/sc/sgholla/final-project/key_exchange.py?user=%s&this_user=%s&get_type=exp_exchange HTTP/1.1\r\n", user, USERNAME);
+          strcat(request, "Host: 608dev-2.net\r\n"); //add more to the end
+          strcat(request, "\r\n");
+          do_http_request("608dev-2.net", request, response, OUT_BUFFER_SIZE, RESPONSE_TIMEOUT, true);
+          if (!(strcmp(response, "Not yet") == 0)) {
+            Serial.println("REACHED HERE");
+            g_b = atoi(response);
+            key_exchange_state = 2;
+          } else {
+            Serial.println("Response is not yet i guesss");
+          }
+          last_get_request = millis();
+        }
+      }
+      else {
+        Serial.println("Exponent exchange failed, trying again.");
+        key_exchange_state = 0;
+      }
+      break;
+    case 2:
+      Serial.println("Done");
+      break;
+  }
+
 }
+
+bigNum set_a(const bigNum &p, const bigNum &g) {
+  a = rand() % p;
+  bigNum a_copy = a;
+  bigNum g_copy = g;
+  bigNum g_a = 1;
+  while (a_copy) {
+    if (a_copy % 2) g_a *= g_copy;
+    
+    a_copy >>= 1;
+    g_copy *= g_copy;
+    g_copy %= p;
+    g_a %= p;
+  }
+  return g_a;
+}
+
