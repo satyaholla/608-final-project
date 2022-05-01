@@ -13,13 +13,13 @@ def request_handler(request):
     if request['method'] == 'GET':
         try:
             values = request['values']
-            other_user, this_user = values['user'], values['this_user']
             get_type = values['get_type']
+            other_user, this_user = values['other_user'], values['this_user']
         except KeyError:
             return 'Key error'
 
         if get_type == 'gen_exchange':
-            gen_res = get_gen_exchange(getter=this_user, poster=other_user)
+            gen_res = get_gen_exchange(getter=this_user, poster=other_user) # try adding a delay to fix concurrency issues
             if gen_res is not None:
                 p, g = gen_res
                 return f'{p},{g}'
@@ -29,7 +29,7 @@ def request_handler(request):
                 return f'{p},{g}'
 
         elif get_type == 'exp_exchange':
-            return f'{get_exp_exchange(getter=this_user, poster=other_user)}' # not yet has to be returned sometimes
+            return f'{get_exp_exchange(getter=this_user, poster=other_user)}'
 
         else: return 'Not a valid type of get request'
 
@@ -41,7 +41,7 @@ def request_handler(request):
             return 'Key Error'
         
         if post_type == 'exp_exchange':
-            other_user, this_user = values['user'], values['this_user']
+            other_user, this_user = values['other_user'], values['this_user']
             exponent = int(values['exponent'])
             post_exp_exchange(poster=this_user, getter=other_user, exponent=exponent)
             return f'Received {exponent}'
@@ -117,7 +117,7 @@ def get_exp_exchange(poster, getter):
     gen_res = c.execute('''SELECT * FROM exp_table WHERE poster=? AND getter=? ORDER BY timing DESC;''', (poster, getter)).fetchone()
     conn.commit()
     conn.close()
-    return 'Not yet' if gen_res is None else gen_res[2]
+    return 'x' if gen_res is None else gen_res[2]
 
 def post_exp_exchange(poster, getter, exponent):
     conn = sqlite3.connect(db)  # connect to that database (will create if it doesn't already exist)
@@ -137,4 +137,7 @@ def request_handler_test(method, **kwargs):
 
 
 if __name__ == '__main__':
-    print(request_handler_test('GET', user='satya', this_user='ethan', get_type='gen_exchange'))
+    g = set()
+    for i in range(1000):
+        g.add(find_generator(13, {3:1, 2:2}))
+    print(g)

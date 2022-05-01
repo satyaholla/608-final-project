@@ -103,6 +103,15 @@ class String {
             return *this;
         }
 
+        bool operator==(String& other) {
+            if (this->length != other.length) { return false; }
+            for (int i = 0; i < this->length; i++) {
+              if (this->body[i] != other.body[i]) { return false; }
+            }
+            Serial.println()
+            return true;
+        }
+
         char& operator[](int i) {
             if (i >= this->length || i < 0) throw std::range_error("index out of range");
             return this->body[i];

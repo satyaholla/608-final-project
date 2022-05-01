@@ -15,11 +15,17 @@ bigNum prime = -1;
 bigNum generator = -1;
 bigNum a = -1;
 bigNum g_b = -1;
+bigNum key = 0;
+
 bool printed = false;
 int key_exchange_state = 0;
+int message_send_state = 0;
+
 uint32_t key_exchange_timer;
 uint32_t last_get_request;
+uint32_t last_message_check;
 const uint16_t KEY_EXCHANGE_TIMEOUT = 10000;
+const uint16_t MESSAGE_HANDLING_TIMEOUT = 5000;
 
 const uint16_t RESPONSE_TIMEOUT = 6000;
 const uint16_t IN_BUFFER_SIZE = 3500; //size of buffer to hold HTTP request
@@ -36,12 +42,13 @@ const char SUFFIX[] = "]}"; //suffix to POST request
 const char API_KEY[] = "AIzaSyAQ9SzqkHhV-Gjv-71LohsypXUH447GWX8"; //don't change this and don't share this
 
 
-const uint8_t BUTTON = 45;
+const uint8_t BUTTON1 = 45;
+const uint8_t BUTTON2 = 39;
 const int MAX_APS = 5;
 
 /* Global variables*/
 uint8_t button_state; //used for containing button state and detecting edges
-int old_button_state; //used for detecting button edges
+uint8_t other_button_state; //used for detecting button edges
 uint32_t time_since_sample;      // used for microsecond timing
 
 WiFiClientSecure client; //global WiFiClient Secure object
@@ -54,7 +61,7 @@ WiFiClient client2; //global WiFiClient Secure object
 //const char PASSWORD[] = "";
 //
 //
-const char NETWORK[] = "MIT";
+const char NETWORK[] = "EECS_Labs";
 const char PASSWORD[] = "";
 
 /* Having network issues since there are 50 MIT and MIT_GUEST networks?. Do the following:
@@ -129,7 +136,8 @@ void setup() {
 
   //SET UP BUTTON:
   delay(100); //wait a bit (100 ms)
-  pinMode(BUTTON, INPUT_PULLUP);
+  pinMode(BUTTON1, INPUT_PULLUP);
+  pinMode(BUTTON2, INPUT_PULLUP);
 
   //PRINT OUT WIFI NETWORKS NEARBY
   int n = WiFi.scanNetworks();
@@ -179,14 +187,24 @@ void setup() {
   }
   timer = millis();
   key_exchange_timer = millis();
+  last_message_check = millis();
   srand(millis());
 }
 
 //main body of code
 void loop() {
-  button_state = digitalRead(BUTTON);
+  button_state = digitalRead(BUTTON1);
+  other_button_state = digitalRead(BUTTON2);
+  message_handler();
+  if (button_state) { key_exchange_state = 0; }
+  if (other_button_state) { message_send_state = 0; }
+
   if (!button_state) {
+    printed = false;
     key_exchange("ezahid");
+  }
+  else if (!other_button_state) {
+    send_message("ezahid", "What's up bro");
   }
   else if (!printed && prime != -1) {
     delay(1000);
@@ -195,87 +213,55 @@ void loop() {
     Serial.println(generator);
     Serial.println(a);
     Serial.println(g_b);
+    Serial.println(key);
 
     printed = true;
   }
-
-  // button_state = digitalRead(BUTTON);
-  // if (!button_state && button_state != old_button_state) {
-  //   int offset = sprintf(json_body, "%s", PREFIX);
-  //   int n = WiFi.scanNetworks(); //run a new scan. could also modify to use original scan from setup so quicker (though older info)
-  //   Serial.println("scan done");
-  //   if (n == 0) {
-  //     Serial.println("no networks found");
-  //   } else {
-  //     int max_aps = max(min(MAX_APS, n), 1);
-  //     for (int i = 0; i < max_aps; ++i) { //for each valid access point
-  //       uint8_t* mac = WiFi.BSSID(i); //get the MAC Address
-  //       offset += wifi_object_builder(json_body + offset, JSON_BODY_SIZE-offset, WiFi.channel(i), WiFi.RSSI(i), WiFi.BSSID(i)); //generate the query
-  //       if(i!=max_aps-1){
-  //         offset +=sprintf(json_body+offset,",");//add comma between entries except trailing.
-  //       }
-  //     }
-  //     sprintf(json_body + offset, "%s", SUFFIX);
-  //     Serial.println(json_body);
-  //     int len = strlen(json_body);
-  //     // Make a HTTP request:
-  //     Serial.println("SENDING REQUEST");
-  //     request[0] = '\0'; //set 0th byte to null
-  //     offset = 0; //reset offset variable for sprintf-ing
-  //     offset += sprintf(request + offset, "POST https://www.googleapis.com/geolocation/v1/geolocate?key=%s  HTTP/1.1\r\n", API_KEY);
-  //     offset += sprintf(request + offset, "Host: googleapis.com\r\n");
-  //     offset += sprintf(request + offset, "Content-Type: application/json\r\n");
-  //     offset += sprintf(request + offset, "cache-control: no-cache\r\n");
-  //     offset += sprintf(request + offset, "Content-Length: %d\r\n\r\n", len);
-  //     offset += sprintf(request + offset, "%s\r\n", json_body);
-  //     do_https_request(SERVER, request, response, OUT_BUFFER_SIZE, RESPONSE_TIMEOUT, false);
-  //     Serial.println("-----------");
-  //     Serial.println(response);
-  //     Serial.println("-----------");
-  //     //For Part Two of Lab04B, you should start working here. Create a DynamicJsonDoc of a reasonable size (few hundred bytes at least...)
-
-      
-  //     *(strrchr(response, '}') + 1) = char(0);
-  //     char* stripped_response = strchr(response, '{');
-  //     Serial.println("STRIPPED RESPONSE\n\n");
-  //     Serial.println(stripped_response);
-  //     Serial.println("\nend\n\n");
-  //     DynamicJsonDocument doc(1024);
-
-  //     DeserializationError error = deserializeJson(doc, stripped_response);
-
-  //     // Test if parsing succeeds.
-  //     if (error) {
-  //       Serial.print(F("deserializeJson() failed: "));
-  //       Serial.println(error.f_str());
-  //       return;
-  //     }
-
-  //     double lat = doc["location"]["lat"];
-  //     double lng = doc["location"]["lng"];
-
-  //     request[0] = '\0';
-  //     sprintf(request, "GET http://608dev-2.net/sandbox/sc/sgholla/lab05a/get_area.py?lat=%f&lon=%f HTTP/1.1\r\n", lat, lng);
-  //     strcat(request, "Host: 608dev-2.net\r\n"); //add more to the end
-  //     strcat(request, "\r\n");
-  //     do_http_request("608dev-2.net", request, response, OUT_BUFFER_SIZE, RESPONSE_TIMEOUT, true);
-
-  //     char output[80];
-  //     sprintf(output, "Current Location:\nLat: %f\nLon: %f\n%s", lat, lng, response);
-  //     tft.setCursor(0,0);
-  //     tft.print(output);
-  //   }
-  // }
-  // old_button_state = button_state;
 }
 
+// TODO: make a standard get/post requesting function
 
-void key_exchange(const char* user) {
+void send_message(const char* user, const char* message) {
+  switch (message_send_state) {
+    case 0: {
+      char body[200];
+      sprintf(body, "sender=%s&recipient=%s&message=(%s, %llu)", USERNAME, user, message, key); //generate body, posting temp, humidity to server
+      int body_len = strlen(body); //calculate body length (for header reporting)
+      sprintf(request, "POST http://608dev-2.net/sandbox/sc/sgholla/final-project/message.py HTTP/1.1\r\n");
+      strcat(request, "Host: 608dev-2.net\r\n");
+      strcat(request, "Content-Type: application/x-www-form-urlencoded\r\n");
+      sprintf(request + strlen(request), "Content-Length: %d\r\n", body_len); //append string formatted to end of request buffer
+      strcat(request, "\r\n"); //new line from header to body
+      strcat(request, body); //body
+      strcat(request, "\r\n"); //new line
+      do_http_request("608dev-2.net", request, response, OUT_BUFFER_SIZE, RESPONSE_TIMEOUT, true);
+      message_send_state = 1; }
+      break;
+
+    case 1:
+      break;
+  }
+  
+}
+
+void message_handler() {
+  if (millis() - last_message_check > MESSAGE_HANDLING_TIMEOUT) {
+    request[0] = '\0';
+    sprintf(request, "GET http://608dev-2.net/sandbox/sc/sgholla/final-project/message.py?recipient=%s HTTP/1.1\r\n", USERNAME);
+    strcat(request, "Host: 608dev-2.net\r\n"); //add more to the end
+    strcat(request, "\r\n");
+    do_http_request("608dev-2.net", request, response, OUT_BUFFER_SIZE, RESPONSE_TIMEOUT, true);
+    Serial.println(response);
+    last_message_check = millis();
+  }
+}
+
+void key_exchange(const char* user) { // TODO: make this a class update function
   bigNum g_a;
   switch (key_exchange_state) {
     case 0:
       request[0] = '\0';
-      sprintf(request, "GET http://608dev-2.net/sandbox/sc/sgholla/final-project/key_exchange.py?user=%s&this_user=%s&get_type=gen_exchange HTTP/1.1\r\n", user, USERNAME);
+      sprintf(request, "GET http://608dev-2.net/sandbox/sc/sgholla/final-project/key_exchange.py?other_user=%s&this_user=%s&get_type=gen_exchange HTTP/1.1\r\n", user, USERNAME);
       strcat(request, "Host: 608dev-2.net\r\n"); //add more to the end
       strcat(request, "\r\n");
       do_http_request("608dev-2.net", request, response, OUT_BUFFER_SIZE, RESPONSE_TIMEOUT, true);
@@ -295,7 +281,7 @@ void key_exchange(const char* user) {
       // POST THE G_A
       {
         char body[200];
-        sprintf(body, "post_type=%s&user=%s&this_user=%s&exponent=%llu", "exp_exchange", user, USERNAME, g_a); //generate body, posting temp, humidity to server
+        sprintf(body, "post_type=%s&other_user=%s&this_user=%s&exponent=%llu", "exp_exchange", user, USERNAME, g_a); //generate body, posting temp, humidity to server
         int body_len = strlen(body); //calculate body length (for header reporting)
         sprintf(request, "POST http://608dev-2.net/sandbox/sc/sgholla/final-project/key_exchange.py HTTP/1.1\r\n");
         strcat(request, "Host: 608dev-2.net\r\n");
@@ -314,11 +300,11 @@ void key_exchange(const char* user) {
       if (millis() - key_exchange_timer < KEY_EXCHANGE_TIMEOUT) {
         if (millis() - last_get_request > 100) {
           request[0] = '\0';
-          sprintf(request, "GET http://608dev-2.net/sandbox/sc/sgholla/final-project/key_exchange.py?user=%s&this_user=%s&get_type=exp_exchange HTTP/1.1\r\n", user, USERNAME);
+          sprintf(request, "GET http://608dev-2.net/sandbox/sc/sgholla/final-project/key_exchange.py?other_user=%s&this_user=%s&get_type=exp_exchange HTTP/1.1\r\n", user, USERNAME);
           strcat(request, "Host: 608dev-2.net\r\n"); //add more to the end
           strcat(request, "\r\n");
           do_http_request("608dev-2.net", request, response, OUT_BUFFER_SIZE, RESPONSE_TIMEOUT, true);
-          if (!(strcmp(response, "Not yet") == 0)) {
+          if (response[0] != 'x') {
             Serial.println("REACHED HERE");
             g_b = atoi(response);
             key_exchange_state = 2;
@@ -334,7 +320,11 @@ void key_exchange(const char* user) {
       }
       break;
     case 2:
+      key = largePow(prime, g_b, a);
       Serial.println("Done");
+      key_exchange_state = 3;
+      break;
+    case 3:
       break;
   }
 
@@ -342,17 +332,19 @@ void key_exchange(const char* user) {
 
 bigNum set_a(const bigNum &p, const bigNum &g) {
   a = rand() % p;
-  bigNum a_copy = a;
-  bigNum g_copy = g;
-  bigNum g_a = 1;
-  while (a_copy) {
-    if (a_copy % 2) g_a *= g_copy;
-    
-    a_copy >>= 1;
-    g_copy *= g_copy;
-    g_copy %= p;
-    g_a %= p;
+  return largePow(p, g, a);
+}
+
+bigNum largePow(const bigNum &p, bigNum g, bigNum a) {
+  bigNum res = 1;
+  while (a) {
+    if (a % 2) res *= g;
+
+    a >>= 1;
+    g *= g;
+    g %= p;
+    res %= p;
   }
-  return g_a;
+  return res;
 }
 
