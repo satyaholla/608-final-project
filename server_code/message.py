@@ -1,7 +1,7 @@
 import sqlite3
 
 
-example_db = '/var/jail/home/shruthi/final/random.db'
+example_db = '/var/jail/home/team33/final/messages.db'
 
 def create_database():
     conn = sqlite3.connect(example_db)  # connect to that database (will create if it doesn't already exist)
@@ -10,17 +10,19 @@ def create_database():
     conn.commit() # commit commands (VERY IMPORTANT!!)
     conn.close() # close connection to database
 
-create_database()
+
 
 
 def request_handler(request):
+    create_database()
     if request["method"] == "GET": #from receiver
         #{'method': 'GET', 'args': ['recipient'], 'values': {'recipient': 'kyle'}}
         message_list = []
         recipient = request["values"]["recipient"]
         conn = sqlite3.connect(example_db)
         c = conn.cursor()
-        things = c.execute('''SELECT DISTINCT * FROM message_table WHERE recipient = ? AND read = ?;''',(recipient, 0)).fetchall()
+        things = c.execute('''SELECT DISTINCT * FROM message_table WHERE recipient = ? AND read = 0;''', (recipient,)).fetchall()
+        c.execute('''UPDATE message_table SET read = 1 WHERE read = 0 ''')
         conn.commit()
         conn.close()
         return f"{[f'{thing[0]} says: {thing[2]}' for thing in things]}"
@@ -37,7 +39,7 @@ def request_handler(request):
         
         conn = sqlite3.connect(example_db)
         c = conn.cursor()
-        c.execute('''INSERT into message_table VALUES (?,?,?);''',(sender, recipient, message))
+        c.execute('''INSERT into message_table VALUES (?,?,?,?);''',(sender, recipient, message,0))
         conn.commit()
         conn.close()
 
