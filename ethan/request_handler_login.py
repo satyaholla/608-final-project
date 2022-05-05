@@ -1,8 +1,7 @@
 import sqlite3
-import datetime
 import random
 import math
-ht_db = '/var/jail/home/team33/final/login.db' 
+ht_db = '/var/jail/home/team33/final/logininfo.db' 
 
 def request_handler(request):
     with sqlite3.connect(ht_db) as c:
