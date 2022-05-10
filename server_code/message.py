@@ -1,4 +1,5 @@
 import sqlite3
+import datetime
 
 
 example_db = '/var/jail/home/team33/final/messages.db'
@@ -6,12 +7,9 @@ example_db = '/var/jail/home/team33/final/messages.db'
 def create_database():
     conn = sqlite3.connect(example_db)  # connect to that database (will create if it doesn't already exist)
     c = conn.cursor()  # move cursor into database (allows us to execute commands)
-    c.execute('''CREATE TABLE IF NOT EXISTS message_table (sender text, recipient text, message text, read int);''') # run a CREATE TABLE command
+    c.execute('''CREATE TABLE IF NOT EXISTS message_table (sender text, recipient text, message text, read int, timing timestamp);''') # run a CREATE TABLE command
     conn.commit() # commit commands (VERY IMPORTANT!!)
     conn.close() # close connection to database
-
-
-
 
 def request_handler(request):
     create_database()
@@ -21,11 +19,11 @@ def request_handler(request):
         recipient = request["values"]["recipient"]
         conn = sqlite3.connect(example_db)
         c = conn.cursor()
-        things = c.execute('''SELECT DISTINCT * FROM message_table WHERE recipient = ? AND read = 0;''', (recipient,)).fetchall()
-        c.execute('''UPDATE message_table SET read = 1 WHERE read = 0 ''')
+        things = c.execute('''SELECT sender, message FROM message_table WHERE recipient = ? AND read = 0 ORDER BY timing DESC;''', (recipient,)).fetchone()
+        c.execute('''UPDATE message_table SET read = 1 WHERE read = 0;''')
         conn.commit()
         conn.close()
-        return f"{[f'{thing[0]} says: {thing[2]}' for thing in things]}"
+        return f"{[f'{thing[0]},{thing[1]}' for thing in things]}"
 
     if request["method"] == "POST": #from sender
         #post into the database
@@ -39,7 +37,7 @@ def request_handler(request):
         
         conn = sqlite3.connect(example_db)
         c = conn.cursor()
-        c.execute('''INSERT into message_table VALUES (?,?,?,?);''',(sender, recipient, message,0))
+        c.execute('''INSERT into message_table VALUES (?,?,?,?,?);''',(sender, recipient, message,0, datetime.datetime.now()))
         conn.commit()
         conn.close()
 

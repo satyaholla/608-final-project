@@ -3,7 +3,7 @@
 #include <stdexcept>
 
 // to fix: make count const somehow, fix naming of length
-class String {
+class SString {
     protected:
         int length;
         int bodySize;
@@ -29,7 +29,7 @@ class String {
         //     // todo
         // }
 
-        int count(String&& sub) {
+        int count(SString&& sub) {
           int count = 0;
           for (int i = 0; i < this->length - sub.length + 1; i++) {
             bool matches = true;
@@ -41,56 +41,59 @@ class String {
           return count;
         }
 
-        String() {
+        SString() {
             length = 0;
             bodySize = 0;
             body = new char[1];
             body[0] = '\0';
         }
 
-        String(const String &other) {
+        SString(const SString &other) {
             this->length = other.length;
             this->bodySize = int(other.length*1.5) + 1;
             this->body = new char[this->bodySize];
             strcpy(this->body, other.body);
         }
         
-        String(const char* other) {
+        SString(const char* other) {
             this->length = strlen(other);
             this->bodySize = int(this->length*1.5) + 1;
             this->body = new char[this->bodySize];
             strcpy(this->body, other);
         }
         
-        String& operator=(const String &other) {
+        SString& operator=(const SString &other) {
             this->length = other.length;
             this->bodySize = int(other.length*1.5) + 1;
+            delete[] this->body;
             this->body = new char[this->bodySize];
             strcpy(this->body, other.body);
             return *this;
         }
         
-        String& operator=(const char* other) {
+        SString& operator=(const char* other) {
             this->length = strlen(other);
             this->bodySize = int(this->length*1.5) + 1;
+            delete[] this->body;
             this->body = new char[this->bodySize];
             strcpy(this->body, other);
             return *this;
         }
         
-        String& operator+(const String& other) {
+        SString& operator+(const SString& other) {
             this->length += other.length;
             if (this->length > this->bodySize - 1) {
                 this->bodySize = int(this->length*1.5) + 1;
                 char* newBody = new char[this->bodySize];
                 strcpy(newBody, this->body);
+                delete[] this->body;
                 this->body = newBody;
             }
             strcat(this->body, other.body);
             return *this;
         }
         
-        String& operator+(const char* other) {
+        SString& operator+(const char* other) {
             this->length += strlen(other);
             if (this->length > this->bodySize - 1) {
                 this->bodySize = int(this->length*1.5) + 1;
@@ -103,12 +106,11 @@ class String {
             return *this;
         }
 
-        bool operator==(String& other) {
+        bool operator==(SString& other) {
             if (this->length != other.length) { return false; }
             for (int i = 0; i < this->length; i++) {
               if (this->body[i] != other.body[i]) { return false; }
             }
-            Serial.println()
             return true;
         }
 
@@ -117,20 +119,20 @@ class String {
             return this->body[i];
         }
 
-        ~String() {
+        ~SString() {
             delete[] this->body;
         }
         
-        friend std::ostream& operator<<(std::ostream& os, const String& s);
-        friend std::istream& operator>>(std::istream& is, const String& s);
+        friend std::ostream& operator<<(std::ostream& os, const SString& s);
+        friend std::istream& operator>>(std::istream& is, const SString& s);
 };
 
-std::ostream& operator<<(std::ostream& os, const String& s) {
+std::ostream& operator<<(std::ostream& os, const SString& s) {
     os << s.body;
     return os;
 }
 
-std::istream& operator>>(std::istream& is, const String& s) {
+std::istream& operator>>(std::istream& is, const SString& s) {
     is >> s.body;
     return is;
 }
