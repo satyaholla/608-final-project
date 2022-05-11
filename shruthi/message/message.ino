@@ -169,7 +169,7 @@ void message_fsm(uint8_t button1, uint8_t button2, uint8_t button3) {
         do_http_request("608dev-2.net", request_buffer, response_buffer, OUT_BUFFER_SIZE, RESPONSE_TIMEOUT,false);
         Serial.println(response_buffer);
         }
-        Serial.println("finished post req 2");
+        Serial.println("finished post req 2");d
   
       message_state = 0;
       break;
