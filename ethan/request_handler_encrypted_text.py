@@ -24,10 +24,10 @@ def request_handler(request):
             c.execute('''INSERT into messages VALUES (?,?,?);''',(sender,receiver,message))
             return "Message posted successfully"
         elif request["method"]=="GET":
-            sender=request['values']['sender']
             receiver=request['values']['receiver']
-            message_list=c.execute('''SELECT message FROM messages WHERE receiver = ?;''',(receiver,)).fetchall()
+            message_list=c.execute('''SELECT * FROM messages WHERE receiver = ?;''',(receiver,)).fetchall()
             try: 
-                return str(message_list[-1])[2:-3]
+                message_info=str(message_list[-1]).split(',')
+                return "From "+message_info[0][2:-1]+": "+message_info[2][2:-2]
             except:
                 return "No messages to see"
