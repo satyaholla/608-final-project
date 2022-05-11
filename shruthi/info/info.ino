@@ -37,6 +37,17 @@ TFT_eSPI tft = TFT_eSPI();  // Invoke library, pins defined in User_Setup.h
   //enum for button states
   enum button_state {S0, S1, S2, S3, S4};
 
+char username[30]= "";
+char pw[30] = "";
+int token;
+char message[100] = "";
+char signup[10] = "signup";
+char login[10] = "login";
+char function[10];
+char attempt_response[50]="";
+uint32_t stall_message_timer;
+const uint16_t MESSAGE_STALL_PERIOD = 5000;
+
   class Button {
     public:
     uint32_t S2_start_time;
@@ -132,12 +143,12 @@ TFT_eSPI tft = TFT_eSPI();  // Invoke library, pins defined in User_Setup.h
       UserInput() {
         state = 0;
         memset(msg, 0, sizeof(msg));//empty it.
-        strcat(msg, "Long Press to Start!");
+        strcat(msg, "           ");
         char_index = 0;
         scroll_timer = millis();
       }
 
-      int update(float angle, int button, char* output) { // returns current state
+      int update(float angle, int button, char* output, char* change) { // returns current state
         output[0] = '\0';
         uint32_t current_time = millis();
         switch (state) {
@@ -147,7 +158,7 @@ TFT_eSPI tft = TFT_eSPI();  // Invoke library, pins defined in User_Setup.h
               scroll_timer = current_time;
               state = 1;
               char_index = 0;
-              tft.fillScreen(TFT_BLACK);
+              //tft.fillScreen(TFT_BLACK);
             }
             break;
             
@@ -177,40 +188,27 @@ TFT_eSPI tft = TFT_eSPI();  // Invoke library, pins defined in User_Setup.h
             break;
           
           case 2:
-            strcat(output, "Sending Query");
+            strcat(output, "Saved!");
             state = 3;
             break;
             
           case 3:
-            Serial.println(input_string);
-            Serial.println("Figure out later");
-            // adfgvx_encrypt_word(query_string, keyword, encrypted_query_string);
-            // Serial.println(encrypted_query_string);
-            // char http_arg[150];
-            // sprintf(http_arg, "%s&len=%d", encrypted_query_string, 200);
-            // msg[0] = '\0';
-            // lookup(http_arg, encrypted_msg, 300);
-            // Serial.println(encrypted_msg);
-            // char enc_msg_copy[OUT_BUFFER_SIZE] = {0};
-            // char decrypted_word[50] = {0};
-            // strcpy(enc_msg_copy, encrypted_msg);
-            
-            // const char space[2] = " ";
-            // char *token;
-            
-            // token = strtok(enc_msg_copy, space);
-            // adfgvx_decrypt_word(token, keyword, decrypted_word);
-            // strcat(msg, decrypted_word);
+            //Serial.print("inp string is ");
+            //Serial.println(input_string);
+            //Serial.print("username is empty ");
+            //Serial.println(username);
+            strcat(change, input_string); 
+            //Serial.println("sprintfhappened");
+            Serial.print("username ");
+            Serial.println(username);
 
-            // while( token != NULL ) {
-            //     strcat(msg, " ");
-            //     token = strtok(NULL, space);
-            //     if (token == NULL) { break; }
-            //     adfgvx_decrypt_word(token, keyword, decrypted_word);
-            //     strcat(msg, decrypted_word);              
-            // }
+            Serial.print("password ");
+            Serial.println(pw);
 
-            // strcpy(query_string, "");
+            
+
+
+  
             state = 0;
             // strcat(output, msg);
             // Serial.println(msg);
@@ -221,7 +219,7 @@ TFT_eSPI tft = TFT_eSPI();  // Invoke library, pins defined in User_Setup.h
   };
 
 
-char network[] = "MIT";
+char network[] = "EECS_Labs";
 char password[] = "";
 /* Having network issues since there are 50 MIT and MIT_GUEST networks?. Do the following:
     When the access points are printed out at the start, find a particularly strong one that you're targeting.
@@ -294,6 +292,8 @@ char speech_data[ENC_LEN + 200] = {0}; //global used for collecting speech data
 const char* NETWORK  = "EECS_Labs";     // your network SSID (name of wifi network)
 const char* PASSWORD = ""; // your network password
 const char*  SERVER = "speech.google.com";  // Server URL
+
+
 
 uint8_t old_val;
 uint32_t timer;
@@ -392,7 +392,9 @@ void setup() {
 }
 
 UserInput imu_input;
+UserInput ii;
 Button button_for_input(38);
+Button bfi(34);
 
 void loop() {
   //get IMU information:
@@ -408,6 +410,10 @@ void loop() {
   uint8_t button3 = digitalRead(BUTTON3);
   uint8_t button4 = digitalRead(BUTTON4);
 
+  //get_message();
+  //delay(5000);
+  
+  //tft.fillScreen(TFT_BLACK);
   ui_fsm(button1, button2, button3, button4); //run post_reporter_fsm (written here)
 
   while (millis() - primary_timer < LOOP_PERIOD); //wait for primary timer to increment
@@ -420,44 +426,62 @@ void loop() {
 void ui_fsm(uint8_t button1, uint8_t button2, uint8_t button3, uint8_t button4) {
   switch(ui_state){
     case 0: //welcome screen
+      //memset username and password
         ledcWrite(2, 250);
         ledcWrite(3, 250);
         ledcWrite(4, 250);
-      if (button1 == 0){
+      tft.setCursor(0, 0, 2);
+      tft.println("Welcome!");
+      tft.println("Signup? Press 1.");
+      tft.println("Login? Press 3.");      
+      if (button1 == 0){ //signup
         
         ui_state = 1;
-        Serial.println("button1 pressed");  
+        Serial.println("sent to signup");  
+        tft.fillScreen(TFT_BLACK);
+        strcat(function,signup);
+        
       }
-      /*else if (button3 == 1){
-        //tft.println("Welcome to home screen.");
-        ui_state = 0;
-      }*/
+    if (button3 == 0){ //login
+        ui_state = 1;
+        Serial.println("sent to login");  
+        tft.fillScreen(TFT_BLACK);
+        strcat(function,login);
+      }
+  
       break;
-    case 1: //new user info entering
-      if (button1 == 1){
+    case 1: //sign up
+      if (button1 == 1){ 
         //Serial.println("button1 lifted");
         //tft.fillScreen(TFT_BLACK);
         ledcWrite(2, 250);
         ledcWrite(3, 250);
         ledcWrite(4, 250);
-        tft.setCursor(0, 0, 2);
-        tft.println("Welcome New User! Please enter your info");
+        //tft.setCursor(0, 0, 2);
+        //tft.println("Login or Signup?");
 
         float x, y;
         get_angle(&x, &y); //get angle values
         char user_input_array[30];
-        int imu_input_state = imu_input.update(y, button_for_input.update(), user_input_array);
-        tft.setCursor(0,0,1);
+        //Serial.println("before");
+        int imu_input_state = imu_input.update(y, button_for_input.update(), user_input_array, username);
+        //Serial.println("after");
+        tft.setCursor(0,0,2);
         tft.println(user_input_array);
 
-        if (imu_input_state == 3) {
-          Serial.println("yay");
-        }
-
-        if(button2 == 0){
-          ui_state = 2;
+        
+        //if (imu_input_state == 3) {
+        //  Serial.println("in state");
+          
+          //tft.fillScreen(TFT_BLACK);
+        //}  
+      
+        if (button4 == 0){
+          Serial.println("button 4 pressed");
+          ui_state = 14;
           tft.fillScreen(TFT_BLACK);
         }
+
       }
       break;
     case 2:
@@ -636,10 +660,128 @@ void ui_fsm(uint8_t button1, uint8_t button2, uint8_t button3, uint8_t button4) 
       }
     }
     break;
+    /*
+    case 13: //login
+    if (button4 == 1){ 
+        //Serial.println("button1 lifted");
+        //tft.fillScreen(TFT_BLACK);
+        ledcWrite(2, 250);
+        ledcWrite(3, 250);
+        ledcWrite(4, 250);
+        //tft.setCursor(0, 0, 2);
+        //tft.println("Login or Signup?");
+
+        float x, y;
+        get_angle(&x, &y); //get angle values
+        char user_input_array2[30];
+        //Serial.println("before");
+        int imu_input_state = imu_input.update(y, button_for_input.update(), user_input_array2, username2);
+        //Serial.println("after");
+        tft.setCursor(0,0,2);
+        tft.println(user_input_array2);
+
+        
+        //if (imu_input_state == 3) {
+        //  Serial.println("in state");
+          
+          //tft.fillScreen(TFT_BLACK);
+        //}  
+      
+        if (button4 == 0){
+          Serial.println("button 4 pressed");
+          ui_state = 17;
+          tft.fillScreen(TFT_BLACK);
+        }
+
+      }
+      break;
+      */
+  case 14:
+      if(button4 == 1){
+        Serial.println("in case 14");
+        ui_state = 15;
+        
+        
+
+      }
+      break;
+      case 15:
+      {
+          float a, b;
+          get_angle(&a, &b); //get angle values
+          char pw_array[30];
+          int iis2 = ii.update(b, bfi.update(), pw_array, pw);
+          tft.setCursor(0,0,2);
+          tft.println(pw_array);
+
+        if(button2 == 0){
+          ui_state = 16;
+        }}
+        break;
+      case 16:
+        {      
+        Serial.println("in state 16");
+        post_method(username, pw, function);
+        Serial.println("post request done");
+        int val=atoi(attempt_response);
+        if(val==0){
+          tft.println(attempt_response);
+        }
+        else{
+          tft.println("Successful Login");
+          token=atoi(attempt_response);
+        }
+        stall_message_timer = millis();
+        ui_state=17;
+
+        }
+        break;
+      case 17:
+        if (millis() - stall_message_timer > MESSAGE_STALL_PERIOD) {
+          ui_state = 18;
+        }
+        break;
+      case 18:
+        int val=atoi(attempt_response);
+        if(val==0){
+          ui_state=0;
+        }
+        else{
+          ui_state=2;
+        }
+        attempt_response[0]='\0'; //might need to change here (memset instead)
+        tft.fillScreen(TFT_BLACK);
+        break;
+
+      
+    
 
   }
 }
 
+
+void get_message(){
+  Serial.println("get request");
+  sprintf(request_buffer,"GET https://608dev-2.net/sandbox/sc/team33/final/messages.py?recipient=arduina HTTP/1.1\r\n");
+  strcat(request_buffer,"Host: 608dev-2.net\r\n"); //add more to the end
+  strcat(request_buffer,"\r\n"); //add blank line!
+  do_http_request("608dev-2.net", request_buffer, response_buffer, OUT_BUFFER_SIZE, RESPONSE_TIMEOUT, true);
+  Serial.println("got a response");
+  Serial.println(response_buffer);
+  Serial.printf("%d\n", strcmp(response_buffer, "none"));
+  // char temp[5];
+  // temp[0] = '\0';
+  // strncpy(response_buffer, temp);
+  // temp[4] = '\0';
+  if (strcmp(response_buffer, "none") != 0){ //not empty
+    tft.fillScreen(TFT_BLACK);
+    tft.setCursor(0,0,2);
+    tft.println(response_buffer);
+  }
+  
+  
+
+}
 void transcribe(){
   button_state = digitalRead(PIN_1);
         //Serial.println(button_state);
@@ -786,5 +928,23 @@ int8_t mulaw_encode(int16_t sample) {
         ;
   lsb = (sample >> (position - 4)) & 0x0f;
   return (~(sign | ((position - 5) << 4) | lsb));
+}
+
+void post_method(char* user,char* pword,char* function) {
+    char body[1000]; 
+    sprintf(body,"user=%s&password=%s&function=%s",user,pword,function);
+    int body_len = strlen(body); 
+    sprintf(request_buffer,"POST http://608dev-2.net/sandbox/sc/team33/final/request_handler_login.py/ HTTP/1.1\r\n");
+    strcat(request_buffer,"Host: 608dev-2.net\r\n");
+    strcat(request_buffer,"Content-Type: application/x-www-form-urlencoded\r\n");
+    sprintf(request_buffer+strlen(request_buffer),"Content-Length: %d\r\n", body_len); 
+    strcat(request_buffer,"\r\n"); 
+    strcat(request_buffer,body); 
+    strcat(request_buffer,"\r\n"); 
+    do_http_request("608dev-2.net", request_buffer, response_buffer, OUT_BUFFER_SIZE, RESPONSE_TIMEOUT,true);
+    Serial.println(response_buffer); 
+    strcat(attempt_response, response_buffer);
+
+
 }
 
