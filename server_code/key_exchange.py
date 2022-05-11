@@ -14,11 +14,13 @@ def request_handler(request):
         try:
             values = request['values']
             get_type = values['get_type']
-            other_user, this_user = values['other_user'], values['this_user']
+            
         except KeyError:
             return 'Key error'
 
-        if get_type == 'gen_exchange':
+        if get_type == 'gen_exchange': # p,g if there was something in the database, ^ otherwise (so it has to post)
+            try: other_user, this_user = values['other_user'], values['this_user']
+            except KeyError: return 'Key error'
             gen_res = get_gen_exchange(getter=this_user, poster=other_user) # try adding a delay to fix concurrency issues
             if gen_res is not None:
                 p, g = gen_res
@@ -26,10 +28,19 @@ def request_handler(request):
             else:
                 p, g = SAFE_PRIME, find_generator(SAFE_PRIME, FACTORIZATION)
                 post_gen_exchange(poster=this_user, getter=other_user, p=p, g=g)
-                return f'{p},{g}'
+                return f'^'
 
-        elif get_type == 'exp_exchange':
-            return f'{get_exp_exchange(getter=this_user, poster=other_user)}'
+        elif get_type == 'exp_exchange': # exponent if there's one in the database, ^ otherwise
+            try: other_user, this_user = values['other_user'], values['this_user']
+            except KeyError: return 'Key error'
+            exp = get_exp_exchange(getter=this_user, poster=other_user)
+            return '^' if exp is None else f'{exp[0]}'
+
+        elif get_type == 'new_key_exchange': # 
+            try: recipient = values['recipient']
+            except KeyError: return 'Key error'
+            other_user = get_new_key_exchange(recipient)
+            return '^' if other_user is None else f'{other_user[0]}'
 
         else: return 'Not a valid type of get request'
 
@@ -89,7 +100,7 @@ def connect_db(func):
 def initialize_tables():
     conn = sqlite3.connect(db)  # connect to that database (will create if it doesn't already exist)
     c = conn.cursor()  # move cursor into database (allows us to execute commands)
-    c.execute('''CREATE TABLE IF NOT EXISTS gen_table (poster text, getter text, p int, g int, timing timestamp);''') # run a CREATE TABLE command
+    c.execute('''CREATE TABLE IF NOT EXISTS gen_table (poster text, getter text, p int, g int, timing timestamp, new int);''') # run a CREATE TABLE command
     c.execute('''CREATE TABLE IF NOT EXISTS exp_table (poster text, getter text, exp int, timing timestamp);''') # run a CREATE TABLE command
     c.execute('''DELETE FROM gen_table WHERE timing < ?;''', (datetime.datetime.now() - datetime.timedelta(minutes = 5),))
     c.execute('''DELETE FROM exp_table WHERE timing < ?;''', (datetime.datetime.now() - datetime.timedelta(minutes = 5),))
@@ -97,29 +108,53 @@ def initialize_tables():
     conn.close()
 
 def get_gen_exchange(poster, getter):
+    '''
+    returns the most recent generator/prime between a poster and getter, or None if none exists
+    '''
     conn = sqlite3.connect(db)  # connect to that database (will create if it doesn't already exist)
     c = conn.cursor()  # move cursor into database (allows us to execute commands)
-    gen_res = c.execute('''SELECT * FROM gen_table WHERE poster=? AND getter=? ORDER BY timing DESC;''', (poster, getter)).fetchone()
+    gen_res = c.execute('''SELECT p,g FROM gen_table WHERE (poster=? AND getter=?) OR (poster=? AND getter=?) ORDER BY timing DESC;''', (poster, getter, getter, poster)).fetchone()
     conn.commit()
     conn.close()
-    return gen_res if gen_res is None else gen_res[2:4]
+    return gen_res
 
 def post_gen_exchange(poster, getter, p, g):
+    '''
+    inserts a generator/prime combo into the database
+    '''
     conn = sqlite3.connect(db)  # connect to that database (will create if it doesn't already exist)
     c = conn.cursor()  # move cursor into database (allows us to execute commands)
-    c.execute('''INSERT into gen_table VALUES (?,?,?,?,?);''',(poster, getter, p, g, datetime.datetime.now()))
+    c.execute('''INSERT into gen_table VALUES (?,?,?,?,?,?);''',(poster, getter, p, g, datetime.datetime.now(),1))
     conn.commit()
     conn.close()
+
+def get_new_key_exchange(recipient):
+    '''
+    returns the most recent user that tried a gen exchange with a user (that hasn't already been seen), or None if there are none
+    '''
+    conn = sqlite3.connect(db)  # connect to that database (will create if it doesn't already exist)
+    c = conn.cursor()  # move cursor into database (allows us to execute commands)
+    other_user = c.execute('''SELECT poster from gen_table WHERE getter=? AND new=1 ORDER BY timing DESC;''',(recipient,)).fetchone()
+    c.execute('''UPDATE gen_table SET new=0 WHERE new=1 AND getter=?;''', (recipient,))
+    conn.commit()
+    conn.close()
+    return other_user
 
 def get_exp_exchange(poster, getter):
+    '''
+    returns the most recent exponent sent from poster to getter
+    '''
     conn = sqlite3.connect(db)  # connect to that database (will create if it doesn't already exist)
     c = conn.cursor()  # move cursor into database (allows us to execute commands)
-    gen_res = c.execute('''SELECT * FROM exp_table WHERE poster=? AND getter=? ORDER BY timing DESC;''', (poster, getter)).fetchone()
+    exp_res = c.execute('''SELECT exp FROM exp_table WHERE poster=? AND getter=? ORDER BY timing DESC;''', (poster, getter)).fetchone()
     conn.commit()
     conn.close()
-    return 'x' if gen_res is None else gen_res[2]
+    return exp_res
 
 def post_exp_exchange(poster, getter, exponent):
+    '''
+    posts an exponent to be sent from poster to getter to the database
+    '''
     conn = sqlite3.connect(db)  # connect to that database (will create if it doesn't already exist)
     c = conn.cursor()  # move cursor into database (allows us to execute commands)
     c.execute('''INSERT into exp_table VALUES (?,?,?,?);''',(poster, getter, exponent, datetime.datetime.now()))
@@ -137,7 +172,5 @@ def request_handler_test(method, **kwargs):
 
 
 if __name__ == '__main__':
-    g = set()
-    for i in range(1000):
-        g.add(find_generator(13, {3:1, 2:2}))
-    print(g)
+    print(request_handler_test('GET', get_type='gen_exchange', other_user='ezahid', this_user='sgholla'))
+    print(request_handler_test('GET', get_type='new_key_exchange', recipient='ezahid'))

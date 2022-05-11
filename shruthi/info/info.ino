@@ -5,6 +5,7 @@
 #include <mpu6050_esp32.h>
 #include<math.h>
 #include <WiFiClientSecure.h>
+#include <ArduinoJson.h>
 //WiFiClientSecure is a big library. It can take a bit of time to do that first compile
 
 const char* CA_CERT = \
@@ -263,6 +264,14 @@ char response_buffer[OUT_BUFFER_SIZE]; //char array buffer to hold HTTP response
 char response[OUT_BUFFER_SIZE]; //char array buffer to hold HTTP request
 char transcript[100] = {0};
 
+const uint16_t JSON_BODY_SIZE = 3000;
+char request[IN_BUFFER_SIZE];
+char request2[IN_BUFFER_SIZE];
+char request3[IN_BUFFER_SIZE];
+char json_body[JSON_BODY_SIZE];
+char request_buffer2[IN_BUFFER_SIZE]; //char array buffer to hold HTTP request
+char reuqest_buffer3[IN_BUFFER_SIZE];
+
 const uint8_t BUTTON1 = 45; //pin connected to button
 const uint8_t BUTTON2 = 39; //pin connected to button
 const uint8_t BUTTON3 = 38;
@@ -275,6 +284,9 @@ const char PREFIX[] = "{\"config\":{\"encoding\":\"MULAW\",\"sampleRateHertz\":8
 const char SUFFIX[] = "\"}}"; //suffix to POST request
 const int AUDIO_IN = 1; //pin where microphone is connected
 const char API_KEY[] = "AIzaSyAQ9SzqkHhV-Gjv-71LohsypXUH447GWX8"; //don't change this
+const char PREFIX2[] = "{\"wifiAccessPoints\": ["; //beginning of json body
+const char SUFFIX2[] = "]}"; //suffix to POST request
+const int MAX_APS = 5;
 
 const uint8_t PIN_1 = 34; //button 1
 const uint8_t PIN_2 = 39; //button 2
@@ -286,12 +298,21 @@ uint8_t ui_state; //state of posting
 /* Global variables*/
 uint8_t button_state; //used for containing button state and detecting edges
 int old_button_state; //used for detecting button edges
+uint8_t button1_state; //used for containing button state and detecting edges
+int old_button1_state; //used for detecting button edges
 uint32_t time_since_sample;      // used for microsecond timing
+uint8_t device_mode;
+uint8_t recording_flag;
+uint8_t uploading_flag;
+uint8_t message_flag;
+char* clump;
 
 char speech_data[ENC_LEN + 200] = {0}; //global used for collecting speech data
 const char* NETWORK  = "EECS_Labs";     // your network SSID (name of wifi network)
 const char* PASSWORD = ""; // your network password
 const char*  SERVER = "speech.google.com";  // Server URL
+char*  SERVER2 = "googleapis.com";  // Server URL
+const char POST_URL[] = "POST https://608dev-2.net/sandbox/sc/team33/final/finalproject.py HTTP/1.1\r\n"; //CHANGE THIS TO YOUR TEAM'S URL
 
 
 
@@ -299,6 +320,7 @@ uint8_t old_val;
 uint32_t timer;
 
 WiFiClientSecure client; //global WiFiClient Secure object
+WiFiClient client2; //global WiFiClient Secure object
 
 
 void setup() {
@@ -389,6 +411,13 @@ void setup() {
   old_val = digitalRead(PIN_1);
 
   ui_state = 0; //initialize to something!
+  device_mode = 0;
+  recording_flag = 0;
+  uploading_flag = 0;
+  message_flag = 0;
+
+  button1_state = 0;
+  old_button1_state = 1;
 }
 
 UserInput imu_input;
@@ -463,8 +492,8 @@ void ui_fsm(uint8_t button1, uint8_t button2, uint8_t button3, uint8_t button4) 
         ledcWrite(2, 250);
         ledcWrite(3, 250);
         ledcWrite(4, 250);
-        //tft.setCursor(0, 0, 2);
-        //tft.println("Login or Signup?");
+        tft.setCursor(0, 0, 2);
+        tft.println("Hold button 3 and release to start input, press button 3 to enter letter, press button 4 to submit");
 
         float x, y;
         get_angle(&x, &y); //get angle values
@@ -472,15 +501,7 @@ void ui_fsm(uint8_t button1, uint8_t button2, uint8_t button3, uint8_t button4) 
         //Serial.println("before");
         int imu_input_state = imu_input.update(y, button_for_input.update(), user_input_array, username);
         //Serial.println("after");
-        tft.setCursor(0,0,2);
         tft.println(user_input_array);
-
-        
-        //if (imu_input_state == 3) {
-        //  Serial.println("in state");
-          
-          //tft.fillScreen(TFT_BLACK);
-        //}  
       
         if (button4 == 0){
           Serial.println("button 4 pressed");
@@ -490,10 +511,102 @@ void ui_fsm(uint8_t button1, uint8_t button2, uint8_t button3, uint8_t button4) 
 
       }
       break;
+    case 30:
+      if (button2 == 1) {
+        tft.setCursor(0,0,2);
+        tft.println("Welcome to Audio Graffiti!               ");
+        tft.println("Graffiti? Press 1");
+        tft.println("Messaging? Press 2");
+
+        if(button1 == 0){
+          ui_state = 31;
+          tft.fillScreen(TFT_BLACK);
+          //delay(5000);
+        }
+        else if (button2 == 0){
+          ui_state = 2;
+          tft.fillScreen(TFT_BLACK);
+      }
+      }
+    case 31:
+      if (button1 == 1){
+      tft.setCursor(0, 0, 2);
+      tft.println("Press 2 to Record a message");
+      tft.println("Press 3 to See messages");
+      // add in another option to return to audio vs graffiti selection
+
+      if (button2 == 0) {
+        ui_state = 32;
+        tft.fillScreen(TFT_BLACK);
+      }
+      if (button3 == 0) {
+        ui_state = 34;
+        tft.fillScreen(TFT_BLACK);
+      }
+      }
+      break;
+    //recording message
+    case 32:
+      if (button2 == 1) {
+        tft.setCursor(0, 0, 2);
+        tft.println("Press 1 to return to selection");
+        tft.println("Press 3 to record and upload a message");
+
+        if (button1 == 0) {
+          ui_state = 31;
+          tft.fillScreen(TFT_BLACK);
+        }
+        if (button3 == 0 && recording_flag == 0) {
+          tft.fillScreen(TFT_BLACK);
+          record_and_upload_message();
+          recording_flag = 1;
+        }
+        if (button3 == 1) {
+          recording_flag = 0;
+          button1_state = digitalRead(BUTTON3);
+        }
+      }
+      break;
+    case 33:
+      if (button3 == 1) {
+        tft.setCursor(0, 0, 2);
+        tft.println("Press 1 to return to selection");
+        tft.println("Press 4 to go load another message");
+        
+
+        if (button1 == 0) {
+          ui_state = 31;
+          tft.fillScreen(TFT_BLACK);
+        }
+        if (button4 == 0 && message_flag == 0) {
+          tft.fillScreen(TFT_BLACK);
+          message_flag = 1;
+        }
+        if (button4 == 1 && message_flag == 1){
+          if (clump != NULL) {
+            tft.println(clump);
+          }
+          else {
+            tft.println("Press 2 to refresh");
+          }
+          clump = strtok(NULL, ",");
+          message_flag = 0;
+        }
+        if (button2 == 0) {
+          ui_state = 34;
+          tft.fillScreen(TFT_BLACK);
+        }
+      }
+      break;
+    case 34:
+      if (button3 == 1 || button2 == 1){
+        gather_messages();
+        ui_state = 33;
+      }
+       break;
     case 2:
       if (button2 == 1){
         tft.setCursor(0,0,2);
-        tft.println("Welcome to Audio Graffiti!               ");
         tft.println("Record? Press 1.");
         tft.println("Speed Dial? Press 3");
         tft.println("Find User? Press 4.");
@@ -512,10 +625,6 @@ void ui_fsm(uint8_t button1, uint8_t button2, uint8_t button3, uint8_t button4) 
         tft.fillScreen(TFT_BLACK);
       }
       }
-      
-      /*else if (button3 == 0){
-        ui_state = 
-      }*/
       break;
     case 3:
       if(button1 == 1){
@@ -676,7 +785,6 @@ void ui_fsm(uint8_t button1, uint8_t button2, uint8_t button3, uint8_t button4) 
         ledcWrite(4, 250);
         //tft.setCursor(0, 0, 2);
         //tft.println("Login or Signup?");
-
         float x, y;
         get_angle(&x, &y); //get angle values
         char user_input_array2[30];
@@ -685,7 +793,6 @@ void ui_fsm(uint8_t button1, uint8_t button2, uint8_t button3, uint8_t button4) 
         //Serial.println("after");
         tft.setCursor(0,0,2);
         tft.println(user_input_array2);
-
         
         //if (imu_input_state == 3) {
         //  Serial.println("in state");
@@ -698,7 +805,6 @@ void ui_fsm(uint8_t button1, uint8_t button2, uint8_t button3, uint8_t button4) 
           ui_state = 17;
           tft.fillScreen(TFT_BLACK);
         }
-
       }
       break;
       */
@@ -718,6 +824,7 @@ void ui_fsm(uint8_t button1, uint8_t button2, uint8_t button3, uint8_t button4) 
           char pw_array[30];
           int iis2 = ii.update(b, bfi.update(), pw_array, pw);
           tft.setCursor(0,0,2);
+          tft.println("Hold button 4 and release to start input, press button 4 to enter letter, press button 2 to submit");
           tft.println(pw_array);
 
         if(button2 == 0){
@@ -753,7 +860,7 @@ void ui_fsm(uint8_t button1, uint8_t button2, uint8_t button3, uint8_t button4) 
           ui_state=0;
         }
         else{
-          ui_state=2;
+          ui_state=30;
         }
         attempt_response[0]='\0'; //might need to change here (memset instead)
         tft.fillScreen(TFT_BLACK);
@@ -914,28 +1021,6 @@ void record_audio() {
 }
 
 
-int8_t mulaw_encode(int16_t sample) {
-  const uint16_t MULAW_MAX = 0x1FFF;
-  const uint16_t MULAW_BIAS = 33;
-  uint16_t mask = 0x1000;
-  uint8_t sign = 0;
-  uint8_t position = 12;
-  uint8_t lsb = 0;
-  if (sample < 0)
-  {
-      sample = -sample;
-      sign = 0x80;
-  }
-  sample += MULAW_BIAS;
-  if (sample > MULAW_MAX)
-  {
-      sample = MULAW_MAX;
-  }
-  for (; ((sample & mask) != mask && position >= 5); mask >>= 1, position--)
-        ;
-  lsb = (sample >> (position - 4)) & 0x0f;
-  return (~(sign | ((position - 5) << 4) | lsb));
-}
 
 void post_method(char* user,char* pword,char* function) {
     char body[1000]; 
@@ -954,4 +1039,3 @@ void post_method(char* user,char* pword,char* function) {
 
 
 }
-

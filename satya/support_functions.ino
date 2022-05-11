@@ -46,6 +46,7 @@ uint8_t char_append(char* buff, char c, uint16_t buff_size) {
 
 
 
+
 /*----------------------------------
  * do_http_request Function:
  * Arguments:
@@ -76,7 +77,7 @@ void do_http_request(char* host, char* request, char* response, uint16_t respons
     memset(response, 0, response_size);  
     count = millis();
     while (client2.available()) { //read out remaining text (body of response)
-      char_append(response,client2.read(),OUT_BUFFER_SIZE);
+      char_append(response,client2.read(), OUT_BUFFER_SIZE);
     }
     if (serial) Serial.println(response);
     client2.stop();
