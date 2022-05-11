@@ -15,6 +15,8 @@ def request_handler(request):
                 if len(correct_password_list)==0:
                     c.execute('''INSERT into login VALUES (?,?);''',(user,password))
                     token=math.floor(random.random()*100000)
+                    if(token<10**5):
+                        token+=10**5
                     c.execute('''INSERT into tokens VALUES (?,?);''',(user,token))
                     return token
                 else:
@@ -27,6 +29,8 @@ def request_handler(request):
                     correct_password=str(correct_password_list[0])[2:-3]
                     if(password==correct_password):
                         token=math.floor(random.random()*100000)
+                        if(token<10**5):
+                            token+=10**5
                         c.execute('''INSERT into tokens VALUES (?,?);''',(user,token))
                         return token
                     else:
